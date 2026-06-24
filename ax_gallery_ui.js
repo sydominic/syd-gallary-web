@@ -17,6 +17,7 @@
   };
   const mobile = {
     active: false,
+    menuOpen: false,
     joystickPointer: null,
     lookPointer: null,
     stickCenter: { x: 0, y: 0 },
@@ -184,6 +185,10 @@
       .ax-mobile-controls {
         display: none;
       }
+      .ax-mobile-menu-toggle,
+      .ax-mobile-fullscreen {
+        display: none;
+      }
       .ax-joystick {
         position: absolute;
         left: 18px;
@@ -209,9 +214,9 @@
       .ax-look-pad {
         position: absolute;
         right: 0;
-        top: 96px;
+        top: 76px;
         bottom: 112px;
-        width: 54vw;
+        width: 46vw;
         pointer-events: auto;
         touch-action: none;
       }
@@ -228,7 +233,129 @@
       .ax-floor-row .ax-btn {
         min-width: 42px;
       }
+      body.ax-mobile {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100dvh;
+      }
+      body.ax-mobile #unity-container {
+        position: fixed !important;
+        inset: 0 !important;
+      }
+      body.ax-mobile #unity-footer {
+        display: none !important;
+      }
+      body.ax-mobile .ax-mobile-controls {
+        display: block;
+      }
+      body.ax-mobile .ax-button-row {
+        position: fixed;
+        right: 10px;
+        bottom: 76px;
+        width: min(280px, calc(100vw - 20px));
+        max-height: min(62dvh, 360px);
+        overflow: auto;
+        padding: 10px;
+        border: 1px solid rgba(255,255,255,0.24);
+        border-radius: 12px;
+        background: rgba(18,20,22,0.88);
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 7px;
+        opacity: 0;
+        transform: translateY(8px);
+        pointer-events: none;
+        transition: opacity 0.16s ease, transform 0.16s ease;
+        backdrop-filter: blur(8px);
+      }
+      body.ax-mobile.ax-menu-open .ax-button-row {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+      body.ax-mobile .ax-btn {
+        min-height: 42px;
+        padding: 8px 9px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 14px;
+      }
+      body.ax-mobile .ax-mobile-fullscreen {
+        position: fixed;
+        right: 10px;
+        top: 10px;
+        display: block;
+        z-index: 4;
+      }
+      body.ax-mobile .ax-mobile-menu-toggle {
+        position: fixed;
+        right: 14px;
+        bottom: 16px;
+        display: grid;
+        place-items: center;
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        font-size: 26px;
+        z-index: 4;
+      }
+      body.ax-mobile .ax-side {
+        left: 0;
+        right: 0;
+        bottom: 0;
+        top: auto;
+        width: auto;
+        max-height: 58dvh;
+        border-radius: 14px 14px 0 0;
+        border-left: 0;
+        border-right: 0;
+        border-bottom: 0;
+        z-index: 5;
+      }
+      body.ax-mobile .ax-help {
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: auto;
+        max-height: 52dvh;
+        overflow: auto;
+        border-radius: 14px 14px 0 0;
+        border-left: 0;
+        border-right: 0;
+        border-bottom: 0;
+        z-index: 5;
+      }
+      body.ax-mobile .ax-look-pad {
+        right: 0;
+        top: 68px;
+        bottom: 92px;
+        width: 42vw;
+      }
+      body.ax-mobile.ax-menu-open .ax-look-pad,
+      body.ax-mobile.ax-panel-open .ax-look-pad,
+      body.ax-mobile.ax-help-open .ax-look-pad {
+        pointer-events: none;
+      }
+      body.ax-mobile .ax-joystick {
+        left: 16px;
+        bottom: 18px;
+        width: 124px;
+        height: 124px;
+      }
+      body.ax-mobile .ax-floor-row {
+        left: 154px;
+        right: 82px;
+        bottom: 18px;
+        justify-content: center;
+      }
       @media (max-width: 720px) {
+        body.ax-mobile {
+          position: fixed;
+          inset: 0;
+          width: 100%;
+          height: 100dvh;
+        }
         body.ax-mobile #unity-container {
           position: fixed !important;
           inset: 0 !important;
@@ -240,15 +367,32 @@
           left: 10px;
           right: 10px;
           top: 10px;
+          align-items: flex-end;
         }
         body.ax-mobile .ax-button-row {
           position: fixed;
-          left: 10px;
           right: 10px;
-          bottom: 152px;
+          bottom: 76px;
+          width: min(280px, calc(100vw - 20px));
+          max-height: min(62dvh, 360px);
+          overflow: auto;
+          padding: 10px;
+          border: 1px solid rgba(255,255,255,0.24);
+          border-radius: 12px;
+          background: rgba(18,20,22,0.88);
           display: grid;
-          grid-template-columns: repeat(5, 1fr);
+          grid-template-columns: 1fr;
           gap: 7px;
+          opacity: 0;
+          transform: translateY(8px);
+          pointer-events: none;
+          transition: opacity 0.16s ease, transform 0.16s ease;
+          backdrop-filter: blur(8px);
+        }
+        body.ax-mobile.ax-menu-open .ax-button-row {
+          opacity: 1;
+          transform: translateY(0);
+          pointer-events: auto;
         }
         body.ax-mobile .ax-btn {
           min-height: 42px;
@@ -263,8 +407,28 @@
         }
         .ax-status {
           align-self: flex-start;
-          max-width: calc(100vw - 20px);
+          max-width: min(52vw, 360px);
           font-size: 12px;
+          opacity: 0.82;
+        }
+        body.ax-mobile .ax-mobile-fullscreen {
+          position: fixed;
+          right: 10px;
+          top: 10px;
+          display: block;
+          z-index: 4;
+        }
+        body.ax-mobile .ax-mobile-menu-toggle {
+          position: fixed;
+          right: 14px;
+          bottom: 16px;
+          display: grid;
+          place-items: center;
+          width: 56px;
+          height: 56px;
+          border-radius: 14px;
+          font-size: 26px;
+          z-index: 4;
         }
         body.ax-mobile .ax-side {
           left: 0;
@@ -277,6 +441,7 @@
           border-left: 0;
           border-right: 0;
           border-bottom: 0;
+          z-index: 5;
         }
         body.ax-mobile .ax-help {
           left: 0;
@@ -289,16 +454,44 @@
           border-left: 0;
           border-right: 0;
           border-bottom: 0;
+          z-index: 5;
         }
         body.ax-mobile .ax-mobile-controls {
           display: block;
         }
+        body.ax-mobile .ax-look-pad {
+          right: 0;
+          top: 68px;
+          bottom: 92px;
+          width: 42vw;
+        }
+        body.ax-mobile.ax-menu-open .ax-look-pad,
+        body.ax-mobile.ax-panel-open .ax-look-pad,
+        body.ax-mobile.ax-help-open .ax-look-pad {
+          pointer-events: none;
+        }
+        body.ax-mobile .ax-joystick {
+          left: 16px;
+          bottom: 18px;
+          width: 124px;
+          height: 124px;
+        }
+        body.ax-mobile .ax-floor-row {
+          left: 154px;
+          right: 82px;
+          bottom: 18px;
+          justify-content: center;
+        }
       }
       @media (orientation: landscape) and (max-height: 520px) {
+        body.ax-mobile .ax-status {
+          display: none;
+        }
         body.ax-mobile .ax-button-row {
+          right: 76px;
           bottom: 12px;
-          left: 150px;
-          right: 10px;
+          width: min(280px, 40vw);
+          max-height: calc(100dvh - 24px);
         }
         body.ax-mobile .ax-side {
           max-height: 78dvh;
@@ -310,10 +503,30 @@
           border-radius: 10px;
           border: 1px solid rgba(255,255,255,0.28);
         }
-        .ax-floor-row {
+        body.ax-mobile .ax-look-pad {
+          top: 42px;
+          right: 0;
+          bottom: 82px;
+          width: 38vw;
+        }
+        body.ax-mobile .ax-joystick {
+          left: 18px;
+          bottom: 16px;
+          width: 116px;
+          height: 116px;
+        }
+        body.ax-mobile .ax-floor-row {
           left: 150px;
-          right: 10px;
-          bottom: 62px;
+          right: 356px;
+          bottom: 16px;
+        }
+        body.ax-mobile .ax-mobile-fullscreen {
+          top: 8px;
+          right: 8px;
+        }
+        body.ax-mobile .ax-mobile-menu-toggle {
+          right: 14px;
+          bottom: 14px;
         }
       }
     `;
@@ -331,6 +544,7 @@
           <a class="ax-btn" href="admin.html" target="_blank" rel="noreferrer">관리자</a>
         </div>
         <div class="ax-status" id="ax-runtime">온라인 전시 준비 중</div>
+        <button class="ax-btn ax-mobile-fullscreen" id="ax-fullscreen" type="button">전체화면</button>
       </div>
       <aside class="ax-side" id="ax-side">
         <div class="ax-side-head">
@@ -363,6 +577,7 @@
           <button class="ax-btn" data-floor="1" type="button">2F</button>
           <button class="ax-btn" data-floor="2" type="button">3F</button>
         </div>
+        <button class="ax-btn ax-mobile-menu-toggle" id="ax-mobile-menu" type="button" aria-label="메뉴 열기">三</button>
       </div>
     `;
     document.body.appendChild(root);
@@ -372,15 +587,24 @@
       sendHud("ShowArtworkInfoString", "");
     });
     document.getElementById("ax-open-list").addEventListener("click", () => {
+      setMobileMenuOpen(false);
       sendHud("ToggleArtworkListString", "");
     });
     document.getElementById("ax-open-map").addEventListener("click", () => {
+      setMobileMenuOpen(false);
       sendHud("ToggleMiniMapString", "");
     });
     document.getElementById("ax-close-info").addEventListener("click", () => setPanelVisible(false));
     document.getElementById("ax-toggle-help").addEventListener("click", () => {
-      document.getElementById("ax-help").classList.toggle("open");
+      setMobileMenuOpen(false);
+      const help = document.getElementById("ax-help");
+      help.classList.toggle("open");
+      document.body.classList.toggle("ax-help-open", help.classList.contains("open"));
     });
+    document.getElementById("ax-mobile-menu").addEventListener("click", () => {
+      setMobileMenuOpen(!mobile.menuOpen);
+    });
+    document.getElementById("ax-fullscreen").addEventListener("click", requestFullscreen);
     setupMobileControls();
     updateMobileMode();
     window.addEventListener("resize", updateMobileMode, { passive: true });
@@ -410,6 +634,28 @@
   function setPanelVisible(visible) {
     ensure();
     document.getElementById("ax-side").classList.toggle("open", !!visible);
+    document.body.classList.toggle("ax-panel-open", !!visible);
+    if (visible) setMobileMenuOpen(false);
+  }
+
+  function setMobileMenuOpen(open) {
+    mobile.menuOpen = !!open;
+    document.body.classList.toggle("ax-menu-open", mobile.menuOpen);
+  }
+
+  function requestFullscreen() {
+    const target = document.getElementById("unity-container") || document.documentElement;
+    const method =
+      target.requestFullscreen ||
+      target.webkitRequestFullscreen ||
+      target.msRequestFullscreen;
+    if (method) {
+      try {
+        method.call(target);
+      } catch (error) {
+        console.warn("AXGallery fullscreen failed", error);
+      }
+    }
   }
 
   function installViewportRules() {
@@ -436,7 +682,10 @@
     mobile.active = isMobileViewport();
     document.body.classList.toggle("ax-mobile", mobile.active);
     sendUnity("SetMobileTouchModeString", mobile.active ? "1" : "0");
-    if (!mobile.active) sendUnity("SetMobileMoveInputString", "0,0");
+    if (!mobile.active) {
+      setMobileMenuOpen(false);
+      sendUnity("SetMobileMoveInputString", "0,0");
+    }
   }
 
   function setupMobileControls() {
@@ -467,6 +716,7 @@
 
     lookPad.addEventListener("pointerdown", (event) => {
       if (!mobile.active) return;
+      if (mobile.menuOpen || isBlockingOverlayOpen()) return;
       event.preventDefault();
       mobile.lookPointer = event.pointerId;
       mobile.lastLook = { x: event.clientX, y: event.clientY };
@@ -474,6 +724,11 @@
     });
     lookPad.addEventListener("pointermove", (event) => {
       if (event.pointerId !== mobile.lookPointer) return;
+      if (mobile.menuOpen || isBlockingOverlayOpen()) {
+        mobile.lookPointer = null;
+        sendUnity("StopMobileLookString", "");
+        return;
+      }
       event.preventDefault();
       const dx = event.clientX - mobile.lastLook.x;
       const dy = event.clientY - mobile.lastLook.y;
@@ -492,6 +747,11 @@
         sendUnity("TeleportToFloorString", button.getAttribute("data-floor"));
       });
     });
+  }
+
+  function isBlockingOverlayOpen() {
+    return document.getElementById("ax-side").classList.contains("open") ||
+      document.getElementById("ax-help").classList.contains("open");
   }
 
   function updateJoystick(clientX, clientY, knob) {
