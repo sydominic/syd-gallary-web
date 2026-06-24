@@ -82,7 +82,7 @@
       gap: 8px;
       align-items: center;
     }
-    .auth, .status {
+    .auth, .status, .filters, .guide {
       margin-bottom: 14px;
       padding: 12px;
       border: 1px solid var(--line);
@@ -92,6 +92,19 @@
     .auth {
       display: grid;
       grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+    }
+    .guide {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .filters {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(120px, 0.5fr));
       gap: 10px;
       align-items: end;
     }
@@ -161,7 +174,7 @@
     .note { color: var(--muted); font-size: 13px; }
     @media (max-width: 720px) {
       header { align-items: stretch; flex-direction: column; }
-      .auth, .row2, .row3 { grid-template-columns: 1fr; }
+      .auth, .filters, .row2, .row3 { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -185,6 +198,40 @@
       <button class="primary" id="login">로그인</button>
     </section>
     <section class="status" id="status">초기화 중</section>
+    <section class="guide">
+      <strong>업로드 순서</strong>
+      <span>슬롯 선택 → 이미지 선택 → 작품명/작가/연도/설명 입력 → 표시 체크 → 저장. 전시장에서는 새로고침 또는 F5로 반영됩니다.</span>
+      <span>권장 이미지: JPG/PNG, 긴 변 2500px 이하, 파일 5MB 이하. 너무 큰 원본은 업로드 전 줄이는 것이 안전합니다.</span>
+    </section>
+    <section class="filters">
+      <label>검색<input id="filterSearch" placeholder="작품명, 작가, 설명 검색"></label>
+      <label>층
+        <select id="filterFloor">
+          <option value="all">전체층</option>
+          <option value="0">1층</option>
+          <option value="1">2층</option>
+          <option value="2">3층</option>
+        </select>
+      </label>
+      <label>유형
+        <select id="filterType">
+          <option value="all">전체유형</option>
+          <option value="Main">Main</option>
+          <option value="Wall">Wall</option>
+          <option value="Stair">Stair</option>
+          <option value="Easel">Easel</option>
+        </select>
+      </label>
+      <label>상태
+        <select id="filterState">
+          <option value="all">전체상태</option>
+          <option value="visible">표시중</option>
+          <option value="hidden">숨김</option>
+          <option value="empty">빈 슬롯</option>
+          <option value="filled">이미지 있음</option>
+        </select>
+      </label>
+    </section>
     <section class="grid" id="grid"></section>
   </main>
 
@@ -202,6 +249,7 @@
     let config;
     let db;
     let records = new Map();
+    let filtersReady = false;
 
     const $ = (id) => document.getElementById(id);
     const status = (message) => $("status").textContent = message;
@@ -247,13 +295,52 @@
     }
 
     function renderEmptySlots() {
-      $("grid").innerHTML = slotMap.map((slot) => cardHtml(slot, records.get(slot.slot_index) || {})).join("");
-      slotMap.forEach((slot) => {
+      bindFilters();
+      const visibleSlots = getVisibleSlots();
+      $("grid").innerHTML = visibleSlots.map((slot) => cardHtml(slot, records.get(slot.slot_index) || {})).join("");
+      visibleSlots.forEach((slot) => {
         const row = records.get(slot.slot_index) || {};
         const file = $(`file-${slot.slot_index}`);
         file.addEventListener("change", () => previewLocal(slot.slot_index, file.files[0]));
         $(`save-${slot.slot_index}`).addEventListener("click", () => saveSlot(slot));
         $(`clear-${slot.slot_index}`).addEventListener("click", () => clearImage(slot));
+      });
+    }
+
+    function bindFilters() {
+      if (filtersReady) return;
+      ["filterSearch", "filterFloor", "filterType", "filterState"].forEach((id) => {
+        $(id).addEventListener("input", renderEmptySlots);
+        $(id).addEventListener("change", renderEmptySlots);
+      });
+      filtersReady = true;
+    }
+
+    function getVisibleSlots() {
+      const query = $("filterSearch").value.trim().toLowerCase();
+      const floor = $("filterFloor").value;
+      const type = $("filterType").value;
+      const stateFilter = $("filterState").value;
+      return slotMap.filter((slot) => {
+        const row = records.get(slot.slot_index) || {};
+        if (floor !== "all" && String(slot.floor_index) !== floor) return false;
+        if (type !== "all" && slot.exhibition_type !== type) return false;
+        const hasImage = !!(row.image_path || row.image_url);
+        const visible = row.visible !== false;
+        if (stateFilter === "visible" && !visible) return false;
+        if (stateFilter === "hidden" && visible) return false;
+        if (stateFilter === "empty" && hasImage) return false;
+        if (stateFilter === "filled" && !hasImage) return false;
+        if (!query) return true;
+        return [
+          slot.slot_index + 1,
+          slot.floor_index + 1,
+          slot.exhibition_type,
+          row.title,
+          row.artist,
+          row.year,
+          row.description
+        ].join(" ").toLowerCase().includes(query);
       });
     }
 
@@ -272,7 +359,7 @@
             <label class="visible"><input id="visible-${slot.slot_index}" type="checkbox" ${row.visible === false ? "" : "checked"}> 표시</label>
           </div>
           <div class="preview">${preview}</div>
-          <input id="file-${slot.slot_index}" type="file" accept="image/png,image/jpeg">
+          <label>이미지 업로드<input id="file-${slot.slot_index}" type="file" accept="image/png,image/jpeg"></label>
           <div class="row3">
             <label>작품명<input id="title-${slot.slot_index}" value="${escapeAttr(row.title || "")}"></label>
             <label>작가<input id="artist-${slot.slot_index}" value="${escapeAttr(row.artist || "")}"></label>

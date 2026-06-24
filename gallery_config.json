@@ -1,6 +1,6 @@
 {
-  "supabaseUrl": "https://kkhverogqytpratxzujk.supabase.co",
-  "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtraHZlcm9ncXl0cHJhdHh6dWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MjI4NDEsImV4cCI6MjA5Mjk5ODg0MX0.1m_5zsYamlemO7R-xfGDASzO6XCmKhAij9RhMq0IBZ4",
+  "supabaseUrl": "https://YOUR_PROJECT_ID.supabase.co",
+  "supabaseAnonKey": "YOUR_SUPABASE_ANON_KEY",
   "artworksTable": "gallery_artworks",
   "imageBucket": "gallery-artworks",
   "publicImageBaseUrl": ""
