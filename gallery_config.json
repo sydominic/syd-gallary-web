@@ -1,6 +1,6 @@
 {
-  "supabaseUrl": "https://YOUR_PROJECT_ID.supabase.co",
-  "supabaseAnonKey": "YOUR_SUPABASE_ANON_KEY",
+  "supabaseUrl": "https://kkhverogqytpratxzujk.supabase.co",
+  "supabaseAnonKey": "sb_publishable_1o0pSs1mV6h1wqiP_KJqDQ_rwV3OsbY",
   "artworksTable": "gallery_artworks",
   "imageBucket": "gallery-artworks",
   "publicImageBaseUrl": ""

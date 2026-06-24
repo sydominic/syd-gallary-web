@@ -89,6 +89,18 @@
       border-radius: 8px;
       background: var(--panel);
     }
+    .status.error {
+      border-color: #d6a5a5;
+      color: #7b1f1f;
+      background: #fff4f4;
+      white-space: pre-wrap;
+    }
+    .status.ok {
+      border-color: #9bc69b;
+      color: #245b24;
+      background: #f3fff3;
+      white-space: pre-wrap;
+    }
     .auth {
       display: grid;
       grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) auto;
@@ -172,6 +184,11 @@
     }
     .visible input { width: auto; min-height: auto; }
     .note { color: var(--muted); font-size: 13px; }
+    .setup-list {
+      margin: 8px 0 0;
+      padding-left: 20px;
+      line-height: 1.55;
+    }
     @media (max-width: 720px) {
       header { align-items: stretch; flex-direction: column; }
       .auth, .filters, .row2, .row3 { grid-template-columns: 1fr; }
@@ -187,6 +204,7 @@
     <div class="toolbar">
       <button id="openGallery">전시 열기</button>
       <button id="refresh">새로고침</button>
+      <button id="checkSetup">설정 확인</button>
       <button id="exportCsv">CSV 백업</button>
       <button id="exportZip">이미지 ZIP 백업</button>
     </div>
@@ -250,42 +268,102 @@
     let db;
     let records = new Map();
     let filtersReady = false;
+    let setupReady = false;
 
     const $ = (id) => document.getElementById(id);
-    const status = (message) => $("status").textContent = message;
+    const status = (message, kind = "") => {
+      $("status").className = `status ${kind}`.trim();
+      $("status").textContent = message;
+    };
+    const statusHtml = (html, kind = "") => {
+      $("status").className = `status ${kind}`.trim();
+      $("status").innerHTML = html;
+    };
     const safeName = (name) => (name || "artwork").replace(/[^a-zA-Z0-9가-힣._-]+/g, "_");
 
     async function init() {
-      const response = await fetch("gallery_config.json", { cache: "no-store" });
-      config = await response.json();
-      db = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-      const { data } = await db.auth.getSession();
-      if (data.session) $("authPanel").style.display = "none";
       renderEmptySlots();
+      await loadConfig();
+      validateConfigOrThrow();
+      db = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+      setupReady = true;
+      const { data, error } = await db.auth.getSession();
+      if (error) throw friendlyError(error);
+      if (data.session) $("authPanel").style.display = "none";
       await loadRecords();
     }
 
+    async function loadConfig() {
+      let response;
+      try {
+        response = await fetch("gallery_config.json", { cache: "no-store" });
+      } catch (error) {
+        throw new Error(
+          "gallery_config.json을 불러오지 못했습니다.\n" +
+          "Render/GitHub에 gallery_config.json 파일이 index.html, admin.html과 같은 위치에 있는지 확인하세요.\n\n" +
+          `원문 오류: ${error.message}`
+        );
+      }
+      if (!response.ok) {
+        throw new Error(`gallery_config.json 로드 실패: HTTP ${response.status}`);
+      }
+      config = await response.json();
+    }
+
+    function validateConfigOrThrow() {
+      const url = (config && config.supabaseUrl || "").trim();
+      const key = (config && config.supabaseAnonKey || "").trim();
+      const hasPlaceholder =
+        !url ||
+        !key ||
+        url.includes("YOUR_PROJECT_ID") ||
+        key.includes("YOUR_SUPABASE_ANON_KEY") ||
+        url.includes("YOUR_") ||
+        key.includes("YOUR_");
+      if (hasPlaceholder) {
+        throw new Error(
+          "Supabase 설정이 아직 입력되지 않았습니다.\n\n" +
+          "수정할 파일: gallery_config.json\n\n" +
+          "필수 입력값:\n" +
+          "1. supabaseUrl: Supabase Project URL\n" +
+          "2. supabaseAnonKey: Supabase anon public key\n\n" +
+          "현재 파일에 YOUR_PROJECT_ID 또는 YOUR_SUPABASE_ANON_KEY가 남아 있으면 로그인/저장/업로드가 모두 실패합니다."
+        );
+      }
+      if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)) {
+        throw new Error(
+          "supabaseUrl 형식이 이상합니다.\n" +
+          "예시 형식: https://프로젝트ID.supabase.co\n\n" +
+          `현재 값: ${url}`
+        );
+      }
+      if (!config.artworksTable) config.artworksTable = "gallery_artworks";
+      if (!config.imageBucket) config.imageBucket = "gallery-artworks";
+    }
+
     async function login() {
+      ensureSetupReady();
       status("로그인 중");
       const { error } = await db.auth.signInWithPassword({
         email: $("email").value.trim(),
         password: $("password").value
       });
-      if (error) throw error;
+      if (error) throw friendlyError(error);
       $("authPanel").style.display = "none";
       await loadRecords();
     }
 
     async function loadRecords() {
+      ensureSetupReady();
       status("전시 데이터 불러오는 중");
       const { data, error } = await db
         .from(config.artworksTable)
         .select("*")
         .order("slot_index", { ascending: true });
-      if (error) throw error;
+      if (error) throw friendlyError(error);
       records = new Map((data || []).map((row) => [row.slot_index, row]));
       renderEmptySlots();
-      status(`로드 완료: ${records.size}개 저장됨 / 33 슬롯`);
+      status(`로드 완료: ${records.size}개 저장됨 / 33 슬롯`, "ok");
     }
 
     function publicUrl(path) {
@@ -302,8 +380,8 @@
         const row = records.get(slot.slot_index) || {};
         const file = $(`file-${slot.slot_index}`);
         file.addEventListener("change", () => previewLocal(slot.slot_index, file.files[0]));
-        $(`save-${slot.slot_index}`).addEventListener("click", () => saveSlot(slot));
-        $(`clear-${slot.slot_index}`).addEventListener("click", () => clearImage(slot));
+        $(`save-${slot.slot_index}`).addEventListener("click", () => runAdminAction(() => saveSlot(slot)));
+        $(`clear-${slot.slot_index}`).addEventListener("click", () => runAdminAction(() => clearImage(slot)));
       });
     }
 
@@ -381,6 +459,8 @@
     }
 
     async function saveSlot(slot) {
+      ensureSetupReady();
+      await ensureLoggedIn();
       status(`슬롯 ${slot.slot_index + 1} 저장 중`);
       const current = records.get(slot.slot_index) || {};
       let image_path = current.image_path || "";
@@ -390,7 +470,7 @@
         const { error: uploadError } = await db.storage
           .from(config.imageBucket)
           .upload(image_path, file, { upsert: true, contentType: file.type || "image/jpeg" });
-        if (uploadError) throw uploadError;
+        if (uploadError) throw friendlyError(uploadError);
       }
 
       const row = {
@@ -409,13 +489,15 @@
       };
 
       const { error } = await db.from(config.artworksTable).upsert(row, { onConflict: "slot_index" });
-      if (error) throw error;
+      if (error) throw friendlyError(error);
       records.set(slot.slot_index, row);
-      status(`슬롯 ${slot.slot_index + 1} 저장 완료`);
+      status(`슬롯 ${slot.slot_index + 1} 저장 완료`, "ok");
       renderEmptySlots();
     }
 
     async function clearImage(slot) {
+      ensureSetupReady();
+      await ensureLoggedIn();
       const current = records.get(slot.slot_index);
       if (!current) return;
       status(`슬롯 ${slot.slot_index + 1} 이미지 제거 중`);
@@ -424,10 +506,10 @@
       }
       const row = { ...current, image_path: "", image_url: "", updated_at: new Date().toISOString() };
       const { error } = await db.from(config.artworksTable).upsert(row, { onConflict: "slot_index" });
-      if (error) throw error;
+      if (error) throw friendlyError(error);
       records.set(slot.slot_index, row);
       renderEmptySlots();
-      status(`슬롯 ${slot.slot_index + 1} 이미지 제거 완료`);
+      status(`슬롯 ${slot.slot_index + 1} 이미지 제거 완료`, "ok");
     }
 
     function exportCsv() {
@@ -440,6 +522,7 @@
     }
 
     async function exportZip() {
+      ensureSetupReady();
       status("이미지 ZIP 백업 생성 중");
       const zip = new JSZip();
       zip.file("ax_gallery_artworks.csv", buildCsvText());
@@ -452,7 +535,82 @@
       }
       const blob = await zip.generateAsync({ type: "blob" });
       downloadBlob("ax_gallery_backup.zip", blob);
-      status("이미지 ZIP 백업 완료");
+      status("이미지 ZIP 백업 완료", "ok");
+    }
+
+    async function checkSetup() {
+      status("설정 확인 중");
+      await loadConfig();
+      validateConfigOrThrow();
+      db = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+      setupReady = true;
+      const checks = [];
+      checks.push(`Supabase URL: ${config.supabaseUrl}`);
+      checks.push(`Table: ${config.artworksTable}`);
+      checks.push(`Bucket: ${config.imageBucket}`);
+      const { error } = await db.from(config.artworksTable).select("slot_index").limit(1);
+      if (error) throw friendlyError(error);
+      status(`설정 확인 완료\n${checks.join("\n")}`, "ok");
+    }
+
+    function ensureSetupReady() {
+      if (!setupReady || !db) {
+        throw new Error(
+          "Supabase 설정이 준비되지 않았습니다.\n" +
+          "먼저 gallery_config.json의 supabaseUrl / supabaseAnonKey 값을 확인하세요."
+        );
+      }
+    }
+
+    async function ensureLoggedIn() {
+      const { data, error } = await db.auth.getSession();
+      if (error) throw friendlyError(error);
+      if (!data.session) {
+        throw new Error("로그인이 필요합니다. 관리자 이메일과 비밀번호로 먼저 로그인하세요.");
+      }
+    }
+
+    async function runAdminAction(action) {
+      try {
+        await action();
+      } catch (error) {
+        showError(error);
+      }
+    }
+
+    function showError(error) {
+      const message = friendlyError(error).message || String(error);
+      status(message, "error");
+    }
+
+    function friendlyError(error) {
+      const raw = error && (error.message || error.error_description || String(error)) || "알 수 없는 오류";
+      if (/Failed to fetch|fetch failed|NetworkError/i.test(raw)) {
+        return new Error(
+          "Supabase에 연결하지 못했습니다.\n\n" +
+          "확인 순서:\n" +
+          "1. gallery_config.json의 supabaseUrl이 실제 Project URL인지 확인\n" +
+          "2. gallery_config.json의 supabaseAnonKey가 anon public key인지 확인\n" +
+          "3. Render에 수정된 gallery_config.json이 실제로 Push/Deploy 되었는지 확인\n" +
+          "4. 회사/학교/공용망에서 Supabase 접속이 차단되지 않는지 확인\n\n" +
+          `원문 오류: ${raw}`
+        );
+      }
+      if (/Invalid login credentials/i.test(raw)) {
+        return new Error("로그인 실패: 이메일 또는 비밀번호가 Supabase Auth 사용자와 일치하지 않습니다.");
+      }
+      if (/row-level security|permission denied|violates row-level security|not authorized|Unauthorized/i.test(raw)) {
+        return new Error(
+          "권한 오류입니다.\n\n" +
+          "확인 순서:\n" +
+          "1. Supabase Auth에 해당 이메일 사용자가 생성되어 있는지 확인\n" +
+          "2. supabase/schema.sql에서 CHANGE_ME_ADMIN_EMAIL@example.com을 실제 관리자 이메일로 바꿔 실행했는지 확인\n" +
+          "3. gallery_admins 테이블에 로그인 이메일이 들어 있는지 확인\n" +
+          "4. storage bucket 이름이 gallery-artworks인지 확인\n\n" +
+          `원문 오류: ${raw}`
+        );
+      }
+      return new Error(raw);
     }
 
     function buildCsvText() {
@@ -489,13 +647,14 @@
       return String(value).replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
     }
 
-    $("login").addEventListener("click", () => login().catch((error) => status(error.message)));
-    $("refresh").addEventListener("click", () => loadRecords().catch((error) => status(error.message)));
+    $("login").addEventListener("click", () => runAdminAction(login));
+    $("refresh").addEventListener("click", () => runAdminAction(loadRecords));
+    $("checkSetup").addEventListener("click", () => runAdminAction(checkSetup));
     $("exportCsv").addEventListener("click", exportCsv);
-    $("exportZip").addEventListener("click", () => exportZip().catch((error) => status(error.message)));
+    $("exportZip").addEventListener("click", () => runAdminAction(exportZip));
     $("openGallery").addEventListener("click", () => location.href = "index.html");
 
-    init().catch((error) => status(error.message));
+    init().catch(showError);
   </script>
 </body>
 </html>
