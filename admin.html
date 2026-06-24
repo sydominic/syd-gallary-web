@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AX Gallery Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <style>
+    :root {
+      --bg: #f6f3ec;
+      --panel: #ffffff;
+      --ink: #1f2428;
+      --muted: #697078;
+      --line: #d9d2c4;
+      --accent: #8f6a20;
+      --danger: #a83232;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(246, 243, 236, 0.96);
+    }
+    h1 { margin: 0; font-size: 20px; }
+    main { padding: 18px; }
+    button, input, textarea, select {
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    button {
+      min-height: 34px;
+      padding: 7px 11px;
+      color: var(--ink);
+      background: #fff;
+      cursor: pointer;
+    }
+    button.primary {
+      color: #fff;
+      border-color: var(--accent);
+      background: var(--accent);
+    }
+    button.danger {
+      color: #fff;
+      border-color: var(--danger);
+      background: var(--danger);
+    }
+    input, textarea, select {
+      width: 100%;
+      min-height: 34px;
+      padding: 7px 9px;
+      background: #fff;
+    }
+    textarea {
+      min-height: 84px;
+      resize: vertical;
+    }
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .auth, .status {
+      margin-bottom: 14px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+    .auth {
+      display: grid;
+      grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+    .card-head {
+      display: flex;
+      gap: 8px;
+      align-items: start;
+      justify-content: space-between;
+    }
+    .slot-title { font-size: 15px; font-weight: 800; }
+    .slot-meta { color: var(--muted); font-size: 12px; }
+    .preview {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #191919;
+      color: #c8c8c8;
+      font-size: 13px;
+    }
+    .preview img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    .row2 {
+      display: grid;
+      grid-template-columns: 1fr 0.55fr;
+      gap: 8px;
+    }
+    .row3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 0.5fr;
+      gap: 8px;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .visible {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .visible input { width: auto; min-height: auto; }
+    .note { color: var(--muted); font-size: 13px; }
+    @media (max-width: 720px) {
+      header { align-items: stretch; flex-direction: column; }
+      .auth, .row2, .row3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>AX Gallery Admin</h1>
+      <div class="note">이미지와 설명을 저장하면 WebGL 전시가 Supabase에서 바로 읽습니다.</div>
+    </div>
+    <div class="toolbar">
+      <button id="openGallery">전시 열기</button>
+      <button id="refresh">새로고침</button>
+      <button id="exportCsv">CSV 백업</button>
+      <button id="exportZip">이미지 ZIP 백업</button>
+    </div>
+  </header>
+  <main>
+    <section class="auth" id="authPanel">
+      <label>관리자 이메일<input id="email" type="email" autocomplete="username"></label>
+      <label>비밀번호<input id="password" type="password" autocomplete="current-password"></label>
+      <button class="primary" id="login">로그인</button>
+    </section>
+    <section class="status" id="status">초기화 중</section>
+    <section class="grid" id="grid"></section>
+  </main>
+
+  <script>
+    const slotMap = [
+      [0, 0, "Wall"], [1, 0, "Wall"], [2, 1, "Wall"], [3, 2, "Wall"],
+      [4, 0, "Main"], [5, 0, "Main"], [6, 1, "Main"], [7, 1, "Main"], [8, 2, "Main"], [9, 2, "Main"],
+      [10, 0, "Stair"], [11, 0, "Stair"], [12, 0, "Stair"], [13, 0, "Stair"],
+      [14, 1, "Stair"], [15, 1, "Stair"], [16, 1, "Stair"], [17, 1, "Stair"],
+      [18, 0, "Easel"], [19, 0, "Easel"], [20, 0, "Easel"], [21, 0, "Easel"], [22, 0, "Easel"], [23, 0, "Easel"],
+      [24, 1, "Easel"], [25, 1, "Easel"], [26, 1, "Easel"], [27, 1, "Easel"], [28, 1, "Easel"],
+      [29, 2, "Easel"], [30, 2, "Easel"], [31, 2, "Easel"], [32, 2, "Easel"]
+    ].map(([slot_index, floor_index, exhibition_type]) => ({ slot_index, floor_index, exhibition_type }));
+
+    let config;
+    let db;
+    let records = new Map();
+
+    const $ = (id) => document.getElementById(id);
+    const status = (message) => $("status").textContent = message;
+    const safeName = (name) => (name || "artwork").replace(/[^a-zA-Z0-9가-힣._-]+/g, "_");
+
+    async function init() {
+      const response = await fetch("gallery_config.json", { cache: "no-store" });
+      config = await response.json();
+      db = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+      const { data } = await db.auth.getSession();
+      if (data.session) $("authPanel").style.display = "none";
+      renderEmptySlots();
+      await loadRecords();
+    }
+
+    async function login() {
+      status("로그인 중");
+      const { error } = await db.auth.signInWithPassword({
+        email: $("email").value.trim(),
+        password: $("password").value
+      });
+      if (error) throw error;
+      $("authPanel").style.display = "none";
+      await loadRecords();
+    }
+
+    async function loadRecords() {
+      status("전시 데이터 불러오는 중");
+      const { data, error } = await db
+        .from(config.artworksTable)
+        .select("*")
+        .order("slot_index", { ascending: true });
+      if (error) throw error;
+      records = new Map((data || []).map((row) => [row.slot_index, row]));
+      renderEmptySlots();
+      status(`로드 완료: ${records.size}개 저장됨 / 33 슬롯`);
+    }
+
+    function publicUrl(path) {
+      if (!path) return "";
+      if (config.publicImageBaseUrl) return `${config.publicImageBaseUrl.replace(/\/$/, "")}/${path}`;
+      return db.storage.from(config.imageBucket).getPublicUrl(path).data.publicUrl;
+    }
+
+    function renderEmptySlots() {
+      $("grid").innerHTML = slotMap.map((slot) => cardHtml(slot, records.get(slot.slot_index) || {})).join("");
+      slotMap.forEach((slot) => {
+        const row = records.get(slot.slot_index) || {};
+        const file = $(`file-${slot.slot_index}`);
+        file.addEventListener("change", () => previewLocal(slot.slot_index, file.files[0]));
+        $(`save-${slot.slot_index}`).addEventListener("click", () => saveSlot(slot));
+        $(`clear-${slot.slot_index}`).addEventListener("click", () => clearImage(slot));
+      });
+    }
+
+    function cardHtml(slot, row) {
+      const imageUrl = row.image_url || publicUrl(row.image_path);
+      const preview = imageUrl
+        ? `<img id="preview-${slot.slot_index}" src="${imageUrl}" alt="">`
+        : `<span id="preview-${slot.slot_index}">이미지 없음</span>`;
+      return `
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <div class="slot-title">슬롯 ${slot.slot_index + 1}</div>
+              <div class="slot-meta">${slot.floor_index + 1}층 / ${slot.exhibition_type}</div>
+            </div>
+            <label class="visible"><input id="visible-${slot.slot_index}" type="checkbox" ${row.visible === false ? "" : "checked"}> 표시</label>
+          </div>
+          <div class="preview">${preview}</div>
+          <input id="file-${slot.slot_index}" type="file" accept="image/png,image/jpeg">
+          <div class="row3">
+            <label>작품명<input id="title-${slot.slot_index}" value="${escapeAttr(row.title || "")}"></label>
+            <label>작가<input id="artist-${slot.slot_index}" value="${escapeAttr(row.artist || "")}"></label>
+            <label>연도<input id="year-${slot.slot_index}" value="${escapeAttr(row.year || "")}"></label>
+          </div>
+          <label>설명<textarea id="desc-${slot.slot_index}">${escapeText(row.description || "")}</textarea></label>
+          <div class="actions">
+            <button class="primary" id="save-${slot.slot_index}">저장</button>
+            <button class="danger" id="clear-${slot.slot_index}">이미지 제거</button>
+          </div>
+        </article>`;
+    }
+
+    function previewLocal(slotIndex, file) {
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const target = $(`preview-${slotIndex}`);
+      target.outerHTML = `<img id="preview-${slotIndex}" src="${url}" alt="">`;
+    }
+
+    async function saveSlot(slot) {
+      status(`슬롯 ${slot.slot_index + 1} 저장 중`);
+      const current = records.get(slot.slot_index) || {};
+      let image_path = current.image_path || "";
+      const file = $(`file-${slot.slot_index}`).files[0];
+      if (file) {
+        image_path = `${slot.floor_index + 1}F/${slot.exhibition_type}/${String(slot.slot_index + 1).padStart(2, "0")}_${Date.now()}_${safeName(file.name)}`;
+        const { error: uploadError } = await db.storage
+          .from(config.imageBucket)
+          .upload(image_path, file, { upsert: true, contentType: file.type || "image/jpeg" });
+        if (uploadError) throw uploadError;
+      }
+
+      const row = {
+        slot_index: slot.slot_index,
+        floor_index: slot.floor_index,
+        exhibition_type: slot.exhibition_type,
+        title: $(`title-${slot.slot_index}`).value.trim(),
+        artist: $(`artist-${slot.slot_index}`).value.trim(),
+        year: $(`year-${slot.slot_index}`).value.trim(),
+        description: $(`desc-${slot.slot_index}`).value,
+        image_path,
+        image_url: "",
+        visible: $(`visible-${slot.slot_index}`).checked,
+        sort_order: slot.slot_index,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await db.from(config.artworksTable).upsert(row, { onConflict: "slot_index" });
+      if (error) throw error;
+      records.set(slot.slot_index, row);
+      status(`슬롯 ${slot.slot_index + 1} 저장 완료`);
+      renderEmptySlots();
+    }
+
+    async function clearImage(slot) {
+      const current = records.get(slot.slot_index);
+      if (!current) return;
+      status(`슬롯 ${slot.slot_index + 1} 이미지 제거 중`);
+      if (current.image_path) {
+        await db.storage.from(config.imageBucket).remove([current.image_path]);
+      }
+      const row = { ...current, image_path: "", image_url: "", updated_at: new Date().toISOString() };
+      const { error } = await db.from(config.artworksTable).upsert(row, { onConflict: "slot_index" });
+      if (error) throw error;
+      records.set(slot.slot_index, row);
+      renderEmptySlots();
+      status(`슬롯 ${slot.slot_index + 1} 이미지 제거 완료`);
+    }
+
+    function exportCsv() {
+      const headers = ["slot_index", "floor_index", "exhibition_type", "title", "artist", "year", "description", "image_path", "visible"];
+      const rows = slotMap.map((slot) => {
+        const row = records.get(slot.slot_index) || slot;
+        return headers.map((key) => csvCell(row[key] ?? "")).join(",");
+      });
+      downloadText("ax_gallery_artworks.csv", [headers.join(","), ...rows].join("\r\n"));
+    }
+
+    async function exportZip() {
+      status("이미지 ZIP 백업 생성 중");
+      const zip = new JSZip();
+      zip.file("ax_gallery_artworks.csv", buildCsvText());
+      for (const slot of slotMap) {
+        const row = records.get(slot.slot_index);
+        if (!row || !row.image_path) continue;
+        const res = await fetch(publicUrl(row.image_path));
+        if (!res.ok) continue;
+        zip.file(row.image_path, await res.blob());
+      }
+      const blob = await zip.generateAsync({ type: "blob" });
+      downloadBlob("ax_gallery_backup.zip", blob);
+      status("이미지 ZIP 백업 완료");
+    }
+
+    function buildCsvText() {
+      const headers = ["slot_index", "floor_index", "exhibition_type", "title", "artist", "year", "description", "image_path", "visible"];
+      const rows = slotMap.map((slot) => {
+        const row = records.get(slot.slot_index) || slot;
+        return headers.map((key) => csvCell(row[key] ?? "")).join(",");
+      });
+      return [headers.join(","), ...rows].join("\r\n");
+    }
+
+    function csvCell(value) {
+      return `"${String(value).replace(/"/g, '""')}"`;
+    }
+
+    function downloadText(name, text) {
+      downloadBlob(name, new Blob(["\ufeff", text], { type: "text/csv;charset=utf-8" }));
+    }
+
+    function downloadBlob(name, blob) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function escapeAttr(value) {
+      return String(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+    }
+
+    function escapeText(value) {
+      return String(value).replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
+    }
+
+    $("login").addEventListener("click", () => login().catch((error) => status(error.message)));
+    $("refresh").addEventListener("click", () => loadRecords().catch((error) => status(error.message)));
+    $("exportCsv").addEventListener("click", exportCsv);
+    $("exportZip").addEventListener("click", () => exportZip().catch((error) => status(error.message)));
+    $("openGallery").addEventListener("click", () => location.href = "index.html");
+
+    init().catch((error) => status(error.message));
+  </script>
+</body>
+</html>
