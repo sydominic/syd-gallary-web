@@ -279,7 +279,7 @@
       $("status").className = `status ${kind}`.trim();
       $("status").innerHTML = html;
     };
-    const safeName = (name) => (name || "artwork").replace(/[^a-zA-Z0-9가-힣._-]+/g, "_");
+    const safeName = (name) => (name || "artwork").replace(/[^a-zA-Z0-9._-]+/g, "_");
 
     async function init() {
       renderEmptySlots();
@@ -458,6 +458,31 @@
       target.outerHTML = `<img id="preview-${slotIndex}" src="${url}" alt="">`;
     }
 
+    function buildStoragePath(slot, file) {
+      const extension = imageExtension(file);
+      const token = Math.random().toString(36).slice(2, 8);
+      const slotNumber = String(slot.slot_index + 1).padStart(2, "0");
+      return [
+        `${slot.floor_index + 1}F`,
+        safePathSegment(slot.exhibition_type),
+        `slot_${slotNumber}_${Date.now()}_${token}.${extension}`
+      ].join("/");
+    }
+
+    function imageExtension(file) {
+      const type = (file && file.type || "").toLowerCase();
+      const name = (file && file.name || "").toLowerCase();
+      if (type === "image/png" || name.endsWith(".png")) return "png";
+      if (type === "image/jpeg" || name.endsWith(".jpg") || name.endsWith(".jpeg")) return "jpg";
+      throw new Error("지원하지 않는 이미지 형식입니다. JPG 또는 PNG만 업로드하세요.");
+    }
+
+    function safePathSegment(value) {
+      return String(value || "Artwork")
+        .replace(/[^a-zA-Z0-9_-]+/g, "_")
+        .replace(/^_+|_+$/g, "") || "Artwork";
+    }
+
     async function saveSlot(slot) {
       ensureSetupReady();
       await ensureLoggedIn();
@@ -466,7 +491,7 @@
       let image_path = current.image_path || "";
       const file = $(`file-${slot.slot_index}`).files[0];
       if (file) {
-        image_path = `${slot.floor_index + 1}F/${slot.exhibition_type}/${String(slot.slot_index + 1).padStart(2, "0")}_${Date.now()}_${safeName(file.name)}`;
+        image_path = buildStoragePath(slot, file);
         const { error: uploadError } = await db.storage
           .from(config.imageBucket)
           .upload(image_path, file, { upsert: true, contentType: file.type || "image/jpeg" });
@@ -598,6 +623,14 @@
       }
       if (/Invalid login credentials/i.test(raw)) {
         return new Error("로그인 실패: 이메일 또는 비밀번호가 Supabase Auth 사용자와 일치하지 않습니다.");
+      }
+      if (/Invalid key/i.test(raw)) {
+        return new Error(
+          "Storage 파일 경로가 Supabase에서 거부되었습니다.\n\n" +
+          "v63에서는 한글 원본 파일명을 저장 경로에 쓰지 않고 ASCII 안전 경로를 생성합니다.\n" +
+          "이 메시지가 계속 나오면 Render에 v63 WebGL 빌드가 제대로 배포되었는지 확인하세요.\n\n" +
+          `원문 오류: ${raw}`
+        );
       }
       if (/row-level security|permission denied|violates row-level security|not authorized|Unauthorized/i.test(raw)) {
         return new Error(
