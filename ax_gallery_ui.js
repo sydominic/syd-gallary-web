@@ -673,6 +673,9 @@
             <button class="ax-close" id="ax-close-menu" type="button">닫기</button>
           </div>
           <button class="ax-btn ax-art-label" id="ax-open-info" type="button" data-label="CAPTION">작품 설명</button>
+          <button class="ax-btn ax-art-label" id="ax-next-artwork" type="button" data-label="NEXT">다음 작품</button>
+          <button class="ax-btn ax-art-label" id="ax-go-selected" type="button" data-label="MOVE">선택 작품 앞으로</button>
+          <button class="ax-btn ax-art-label" id="ax-toggle-tour" type="button" data-label="TOUR">투어 시작/정지</button>
           <button class="ax-btn ax-art-label" id="ax-open-list" type="button" data-label="CATALOG">작품 목록</button>
           <button class="ax-btn ax-art-label" id="ax-open-map" type="button" data-label="FLOOR PLAN">전시장 지도</button>
           <button class="ax-btn ax-art-label" id="ax-toggle-help" type="button" data-label="GUIDE">조작 안내</button>
@@ -725,6 +728,18 @@
     document.getElementById("ax-open-info").addEventListener("click", () => {
       setPanelVisible(true);
       sendHud("ShowArtworkInfoString", "");
+    });
+    document.getElementById("ax-next-artwork").addEventListener("click", () => {
+      setMobileMenuOpen(false);
+      sendHud("GoToNextTourArtworkString", "");
+    });
+    document.getElementById("ax-go-selected").addEventListener("click", () => {
+      setMobileMenuOpen(false);
+      sendHud("GoToSelectedArtworkString", "");
+    });
+    document.getElementById("ax-toggle-tour").addEventListener("click", () => {
+      setMobileMenuOpen(false);
+      sendHud("ToggleGuidedTourString", "");
     });
     document.getElementById("ax-open-list").addEventListener("click", () => {
       setMobileMenuOpen(false);

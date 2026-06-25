@@ -89,6 +89,9 @@
       border-radius: 8px;
       background: var(--panel);
     }
+    .status {
+      white-space: pre-wrap;
+    }
     .status.error {
       border-color: #d6a5a5;
       color: #7b1f1f;
@@ -207,6 +210,10 @@
       <button id="checkSetup">설정 확인</button>
       <button id="exportCsv">CSV 백업</button>
       <button id="exportZip">이미지 ZIP 백업</button>
+      <button id="importCsv">CSV 복원</button>
+      <button id="importZip">ZIP 복원</button>
+      <input id="csvInput" type="file" accept=".csv,text/csv" hidden>
+      <input id="zipInput" type="file" accept=".zip,application/zip" hidden>
     </div>
   </header>
   <main>
@@ -219,7 +226,7 @@
     <section class="guide">
       <strong>업로드 순서</strong>
       <span>슬롯 선택 → 이미지 선택 → 작품명/작가/연도/설명 입력 → 표시 체크 → 저장. 전시장에서는 새로고침 또는 F5로 반영됩니다.</span>
-      <span>권장 이미지: JPG/PNG, 긴 변 2500px 이하, 파일 5MB 이하. 너무 큰 원본은 업로드 전 줄이는 것이 안전합니다.</span>
+      <span>JPG/PNG만 지원합니다. 긴 변 2200px 초과 또는 1.2MB 초과 이미지는 저장 전에 자동으로 웹 전시용 JPEG로 축소됩니다.</span>
     </section>
     <section class="filters">
       <label>검색<input id="filterSearch" placeholder="작품명, 작가, 설명 검색"></label>
@@ -269,6 +276,9 @@
     let records = new Map();
     let filtersReady = false;
     let setupReady = false;
+    const uploadImageMaxEdge = 2200;
+    const uploadImageQuality = 0.86;
+    const uploadImageOptimizeAboveBytes = 1200 * 1024;
 
     const $ = (id) => document.getElementById(id);
     const status = (message, kind = "") => {
@@ -459,7 +469,7 @@
     }
 
     function buildStoragePath(slot, file) {
-      const extension = imageExtension(file);
+      const extension = file.extension || imageExtension(file);
       const token = Math.random().toString(36).slice(2, 8);
       const slotNumber = String(slot.slot_index + 1).padStart(2, "0");
       return [
@@ -477,6 +487,96 @@
       throw new Error("지원하지 않는 이미지 형식입니다. JPG 또는 PNG만 업로드하세요.");
     }
 
+    async function prepareUploadImage(file) {
+      const extension = imageExtension(file);
+      const sourceSize = file.size || 0;
+      const image = await loadImageElement(file);
+      const sourceWidth = image.naturalWidth || image.width;
+      const sourceHeight = image.naturalHeight || image.height;
+      if (!sourceWidth || !sourceHeight) {
+        throw new Error("이미지 크기를 읽지 못했습니다. 다른 JPG/PNG 파일로 다시 시도하세요.");
+      }
+      const longest = Math.max(sourceWidth, sourceHeight);
+      const shouldResize = longest > uploadImageMaxEdge || sourceSize > uploadImageOptimizeAboveBytes;
+      if (!shouldResize) {
+        URL.revokeObjectURL(image.src);
+        return {
+          blob: file,
+          extension,
+          contentType: file.type || (extension === "png" ? "image/png" : "image/jpeg"),
+          optimized: false,
+          sourceWidth,
+          sourceHeight,
+          width: sourceWidth,
+          height: sourceHeight,
+          sourceSize,
+          outputSize: sourceSize
+        };
+      }
+
+      const scale = Math.min(1, uploadImageMaxEdge / longest);
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const height = Math.max(1, Math.round(sourceHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { alpha: false });
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, width, height);
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(image, 0, 0, width, height);
+      const blob = await canvasToBlob(canvas, "image/jpeg", uploadImageQuality);
+      URL.revokeObjectURL(image.src);
+      return {
+        blob,
+        extension: "jpg",
+        contentType: "image/jpeg",
+        optimized: true,
+        sourceWidth,
+        sourceHeight,
+        width,
+        height,
+        sourceSize,
+        outputSize: blob.size || 0
+      };
+    }
+
+    function loadImageElement(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("이미지를 읽지 못했습니다. JPG/PNG 파일인지 확인하세요."));
+        };
+        image.src = url;
+      });
+    }
+
+    function canvasToBlob(canvas, type, quality) {
+      return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("이미지 최적화에 실패했습니다."));
+        }, type, quality);
+      });
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes) return "0 KB";
+      if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+    }
+
+    function uploadSummary(prepared) {
+      if (!prepared.optimized) {
+        return `원본 유지: ${prepared.width}x${prepared.height}, ${formatBytes(prepared.outputSize)}`;
+      }
+      return `자동 최적화: ${prepared.sourceWidth}x${prepared.sourceHeight} / ${formatBytes(prepared.sourceSize)} → ${prepared.width}x${prepared.height} / ${formatBytes(prepared.outputSize)}`;
+    }
+
     function safePathSegment(value) {
       return String(value || "Artwork")
         .replace(/[^a-zA-Z0-9_-]+/g, "_")
@@ -490,11 +590,15 @@
       const current = records.get(slot.slot_index) || {};
       let image_path = current.image_path || "";
       const file = $(`file-${slot.slot_index}`).files[0];
+      let preparedImage = null;
       if (file) {
-        image_path = buildStoragePath(slot, file);
+        status(`슬롯 ${slot.slot_index + 1} 이미지 최적화 중`);
+        preparedImage = await prepareUploadImage(file);
+        image_path = buildStoragePath(slot, preparedImage);
+        status(`슬롯 ${slot.slot_index + 1} 업로드 중\n${uploadSummary(preparedImage)}`);
         const { error: uploadError } = await db.storage
           .from(config.imageBucket)
-          .upload(image_path, file, { upsert: true, contentType: file.type || "image/jpeg" });
+          .upload(image_path, preparedImage.blob, { upsert: true, contentType: preparedImage.contentType });
         if (uploadError) throw friendlyError(uploadError);
       }
 
@@ -516,7 +620,7 @@
       const { error } = await db.from(config.artworksTable).upsert(row, { onConflict: "slot_index" });
       if (error) throw friendlyError(error);
       records.set(slot.slot_index, row);
-      status(`슬롯 ${slot.slot_index + 1} 저장 완료`, "ok");
+      status(`슬롯 ${slot.slot_index + 1} 저장 완료${preparedImage ? "\n" + uploadSummary(preparedImage) : ""}`, "ok");
       renderEmptySlots();
     }
 
@@ -561,6 +665,156 @@
       const blob = await zip.generateAsync({ type: "blob" });
       downloadBlob("ax_gallery_backup.zip", blob);
       status("이미지 ZIP 백업 완료", "ok");
+    }
+
+    async function importCsvFile(file) {
+      ensureSetupReady();
+      await ensureLoggedIn();
+      if (!file) return;
+      status("CSV 복원 중");
+      const text = await readFileText(file);
+      const rows = parseCsvText(text).map(normalizeImportedRow).filter(Boolean);
+      await upsertImportedRows(rows);
+      status(`CSV 복원 완료: ${rows.length}개 슬롯`, "ok");
+    }
+
+    async function importZipFile(file) {
+      ensureSetupReady();
+      await ensureLoggedIn();
+      if (!file) return;
+      status("ZIP 복원 준비 중");
+      const zip = await JSZip.loadAsync(file);
+      const csvEntry =
+        zip.file("ax_gallery_artworks.csv") ||
+        Object.values(zip.files).find((entry) => !entry.dir && /\.csv$/i.test(entry.name));
+      if (!csvEntry) {
+        throw new Error("ZIP 안에서 ax_gallery_artworks.csv를 찾지 못했습니다.");
+      }
+
+      const csvText = await csvEntry.async("text");
+      const rows = parseCsvText(csvText).map(normalizeImportedRow).filter(Boolean);
+      let restoredImages = 0;
+      for (const row of rows) {
+        if (!row.image_path) continue;
+        const imageEntry = zip.file(row.image_path);
+        if (!imageEntry) continue;
+        status(`ZIP 이미지 복원 중: 슬롯 ${row.slot_index + 1}`);
+        const blob = await imageEntry.async("blob");
+        const { error } = await db.storage
+          .from(config.imageBucket)
+          .upload(row.image_path, blob, {
+            upsert: true,
+            contentType: storageContentType(row.image_path)
+          });
+        if (error) throw friendlyError(error);
+        restoredImages++;
+      }
+      await upsertImportedRows(rows);
+      status(`ZIP 복원 완료: ${rows.length}개 슬롯 / 이미지 ${restoredImages}개`, "ok");
+    }
+
+    async function upsertImportedRows(rows) {
+      if (!rows.length) throw new Error("복원할 행이 없습니다.");
+      const { error } = await db.from(config.artworksTable).upsert(rows, { onConflict: "slot_index" });
+      if (error) throw friendlyError(error);
+      records = new Map(rows.map((row) => [row.slot_index, row]));
+      await loadRecords();
+    }
+
+    function normalizeImportedRow(row) {
+      const slotIndex = Number(row.slot_index);
+      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= slotMap.length) return null;
+      const slot = slotMap.find((item) => item.slot_index === slotIndex) || slotMap[slotIndex];
+      const floorIndex = optionalInteger(row.floor_index);
+      const sortOrder = optionalInteger(row.sort_order);
+      return {
+        slot_index: slotIndex,
+        floor_index: floorIndex !== null ? floorIndex : slot.floor_index,
+        exhibition_type: row.exhibition_type || slot.exhibition_type,
+        title: row.title || "",
+        artist: row.artist || "",
+        year: row.year || "",
+        description: row.description || "",
+        image_path: row.image_path || "",
+        image_url: row.image_url || "",
+        visible: parseVisible(row.visible),
+        sort_order: sortOrder !== null ? sortOrder : slotIndex,
+        updated_at: new Date().toISOString()
+      };
+    }
+
+    function optionalInteger(value) {
+      const text = String(value ?? "").trim();
+      if (!text) return null;
+      const number = Number(text);
+      return Number.isInteger(number) ? number : null;
+    }
+
+    function parseVisible(value) {
+      if (typeof value === "boolean") return value;
+      const text = String(value ?? "").trim().toLowerCase();
+      return !(text === "false" || text === "0" || text === "no" || text === "off");
+    }
+
+    function parseCsvText(text) {
+      const rows = parseCsvRows(String(text || "").replace(/^\ufeff/, ""));
+      if (rows.length < 2) return [];
+      const headers = rows[0].map((cell) => cell.trim());
+      return rows.slice(1)
+        .filter((row) => row.some((cell) => String(cell).trim()))
+        .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])));
+    }
+
+    function parseCsvRows(text) {
+      const rows = [];
+      let row = [];
+      let cell = "";
+      let quoted = false;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        const next = text[i + 1];
+        if (quoted) {
+          if (ch === '"' && next === '"') {
+            cell += '"';
+            i++;
+          } else if (ch === '"') {
+            quoted = false;
+          } else {
+            cell += ch;
+          }
+        } else if (ch === '"') {
+          quoted = true;
+        } else if (ch === ",") {
+          row.push(cell);
+          cell = "";
+        } else if (ch === "\n") {
+          row.push(cell);
+          rows.push(row);
+          row = [];
+          cell = "";
+        } else if (ch !== "\r") {
+          cell += ch;
+        }
+      }
+      row.push(cell);
+      rows.push(row);
+      return rows;
+    }
+
+    function readFileText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result || "");
+        reader.onerror = () => reject(new Error("파일을 읽지 못했습니다."));
+        reader.readAsText(file, "utf-8");
+      });
+    }
+
+    function storageContentType(path) {
+      const lower = String(path || "").toLowerCase();
+      if (lower.endsWith(".png")) return "image/png";
+      if (lower.endsWith(".webp")) return "image/webp";
+      return "image/jpeg";
     }
 
     async function checkSetup() {
@@ -627,8 +881,8 @@
       if (/Invalid key/i.test(raw)) {
         return new Error(
           "Storage 파일 경로가 Supabase에서 거부되었습니다.\n\n" +
-          "v63에서는 한글 원본 파일명을 저장 경로에 쓰지 않고 ASCII 안전 경로를 생성합니다.\n" +
-          "이 메시지가 계속 나오면 Render에 v63 WebGL 빌드가 제대로 배포되었는지 확인하세요.\n\n" +
+          "v67에서는 한글 원본 파일명을 저장 경로에 쓰지 않고 ASCII 안전 경로를 생성합니다.\n" +
+          "이 메시지가 계속 나오면 Render에 v67 WebGL 빌드가 제대로 배포되었는지 확인하세요.\n\n" +
           `원문 오류: ${raw}`
         );
       }
@@ -685,6 +939,16 @@
     $("checkSetup").addEventListener("click", () => runAdminAction(checkSetup));
     $("exportCsv").addEventListener("click", exportCsv);
     $("exportZip").addEventListener("click", () => runAdminAction(exportZip));
+    $("importCsv").addEventListener("click", () => $("csvInput").click());
+    $("importZip").addEventListener("click", () => $("zipInput").click());
+    $("csvInput").addEventListener("change", () => {
+      const file = $("csvInput").files[0];
+      runAdminAction(() => importCsvFile(file)).finally(() => { $("csvInput").value = ""; });
+    });
+    $("zipInput").addEventListener("change", () => {
+      const file = $("zipInput").files[0];
+      runAdminAction(() => importZipFile(file)).finally(() => { $("zipInput").value = ""; });
+    });
     $("openGallery").addEventListener("click", () => location.href = "index.html");
 
     init().catch(showError);
