@@ -19,6 +19,7 @@
     active: false,
     menuOpen: false,
     landscapeMode: false,
+    pwaHintDismissed: false,
     joystickPointer: null,
     lookPointer: null,
     stickCenter: { x: 0, y: 0 },
@@ -33,6 +34,11 @@
 
   function ensure() {
     if (document.getElementById("ax-gallery-ui")) return;
+    try {
+      mobile.pwaHintDismissed = localStorage.getItem("axGalleryPwaHintDismissed") === "1";
+    } catch (error) {
+      mobile.pwaHintDismissed = false;
+    }
     installViewportRules();
     const style = document.createElement("style");
     style.textContent = `
@@ -80,6 +86,41 @@
       }
       .ax-mobile-backdrop {
         display: none;
+      }
+      .ax-pwa-tip {
+        position: absolute;
+        left: 14px;
+        right: 14px;
+        bottom: 88px;
+        max-width: 520px;
+        padding: 14px 16px;
+        border: 1px solid var(--ax-border-strong);
+        border-radius: var(--ax-radius);
+        background: rgba(17, 16, 14, 0.94);
+        color: var(--ax-text);
+        pointer-events: auto;
+        box-shadow: 0 14px 34px rgba(0,0,0,0.34);
+        backdrop-filter: blur(8px);
+        display: none;
+      }
+      .ax-pwa-tip.open {
+        display: block;
+      }
+      .ax-pwa-tip strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 15px;
+      }
+      .ax-pwa-tip p {
+        margin: 0 0 10px;
+        color: var(--ax-muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .ax-pwa-tip-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
       }
       .ax-topbar {
         position: absolute;
@@ -437,7 +478,8 @@
       }
       body.ax-mobile.ax-menu-open .ax-look-pad,
       body.ax-mobile.ax-panel-open .ax-look-pad,
-      body.ax-mobile.ax-help-open .ax-look-pad {
+      body.ax-mobile.ax-help-open .ax-look-pad,
+      body.ax-mobile.ax-pwa-open .ax-look-pad {
         pointer-events: none;
       }
       body.ax-mobile .ax-joystick {
@@ -595,7 +637,8 @@
         }
         body.ax-mobile.ax-menu-open .ax-look-pad,
         body.ax-mobile.ax-panel-open .ax-look-pad,
-        body.ax-mobile.ax-help-open .ax-look-pad {
+        body.ax-mobile.ax-help-open .ax-look-pad,
+        body.ax-mobile.ax-pwa-open .ax-look-pad {
           pointer-events: none;
         }
         body.ax-mobile .ax-joystick {
@@ -709,6 +752,13 @@
         <p>우하단 三 버튼으로 메뉴 열기/닫기</p>
         <p>PC: WASD 이동, Shift 달리기, 마우스 드래그로 시점 회전</p>
       </section>
+      <section class="ax-pwa-tip" id="ax-pwa-tip">
+        <strong>iPhone Safari 전체화면 안내</strong>
+        <p>Safari 탭 안에서는 주소창과 탭바를 사이트가 강제로 숨길 수 없습니다. 공유 버튼을 누른 뒤 홈 화면에 추가하고, 홈 화면 아이콘으로 실행하면 앱처럼 더 넓게 열립니다.</p>
+        <div class="ax-pwa-tip-actions">
+          <button class="ax-btn" id="ax-close-pwa-tip" type="button">닫기</button>
+        </div>
+      </section>
       <div class="ax-mobile-controls" id="ax-mobile-controls">
         <button class="ax-mobile-backdrop" id="ax-mobile-backdrop" type="button" aria-label="메뉴 닫기"></button>
         <div class="ax-look-pad" id="ax-look-pad" aria-label="시점 회전 영역"></div>
@@ -758,6 +808,7 @@
       setHelpVisible(true);
     });
     document.getElementById("ax-close-help").addEventListener("click", () => setHelpVisible(false));
+    document.getElementById("ax-close-pwa-tip").addEventListener("click", () => setPwaTipVisible(false, true));
     document.getElementById("ax-mobile-menu").addEventListener("click", () => {
       if (isBlockingOverlayOpen()) {
         closeMobileOverlays();
@@ -769,6 +820,7 @@
     document.getElementById("ax-fullscreen").addEventListener("click", requestFullscreen);
     setupMobileControls();
     updateMobileMode();
+    maybeShowInitialPwaHint();
     window.addEventListener("resize", updateMobileMode, { passive: true });
     window.addEventListener("orientationchange", updateMobileMode, { passive: true });
   }
@@ -807,6 +859,26 @@
     if (visible) setMobileMenuOpen(false);
   }
 
+  function setPwaTipVisible(visible, rememberDismissed) {
+    ensure();
+    const next = !!visible;
+    document.getElementById("ax-pwa-tip").classList.toggle("open", next);
+    document.body.classList.toggle("ax-pwa-open", next);
+    if (next) {
+      setMobileMenuOpen(false);
+      setPanelVisible(false);
+      setHelpVisible(false);
+    }
+    if (rememberDismissed) {
+      mobile.pwaHintDismissed = true;
+      try {
+        localStorage.setItem("axGalleryPwaHintDismissed", "1");
+      } catch (error) {
+        console.warn("AXGallery PWA hint storage failed", error);
+      }
+    }
+  }
+
   function setMobileMenuOpen(open) {
     mobile.menuOpen = !!open;
     document.body.classList.toggle("ax-menu-open", mobile.menuOpen);
@@ -817,11 +889,15 @@
     setMobileMenuOpen(false);
     setPanelVisible(false);
     setHelpVisible(false);
+    setPwaTipVisible(false, false);
     sendUnity("StopMobileLookString", "");
   }
 
   function requestFullscreen() {
     setLandscapeMode(true);
+    if (isIosSafari() && !isStandaloneApp()) {
+      setPwaTipVisible(true, false);
+    }
     const target = document.getElementById("unity-container") || document.documentElement;
     const method =
       target.requestFullscreen ||
@@ -833,6 +909,7 @@
         if (result && typeof result.then === "function") {
           result.then(lockLandscape).catch((error) => {
             console.warn("AXGallery fullscreen failed", error);
+            showFullscreenFallback();
             lockLandscape();
           });
         } else {
@@ -840,10 +917,18 @@
         }
       } catch (error) {
         console.warn("AXGallery fullscreen failed", error);
+        showFullscreenFallback();
         lockLandscape();
       }
     } else {
+      showFullscreenFallback();
       lockLandscape();
+    }
+  }
+
+  function showFullscreenFallback() {
+    if (isIosSafari() && !isStandaloneApp() && !mobile.pwaHintDismissed) {
+      setPwaTipVisible(true, false);
     }
   }
 
@@ -868,6 +953,20 @@
     } catch (error) {
       console.warn("AXGallery orientation lock failed", error);
     }
+  }
+
+  function isIosSafari() {
+    const ua = navigator.userAgent || "";
+    const isiOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const webkit = /WebKit/i.test(ua);
+    const excluded = /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+    return isiOS && webkit && !excluded;
+  }
+
+  function isStandaloneApp() {
+    return window.navigator.standalone === true ||
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.matchMedia("(display-mode: fullscreen)").matches;
   }
 
   function installViewportRules() {
@@ -898,6 +997,15 @@
       setMobileMenuOpen(false);
       sendUnity("SetMobileMoveInputString", "0,0");
     }
+  }
+
+  function maybeShowInitialPwaHint() {
+    if (!mobile.active || mobile.pwaHintDismissed || isStandaloneApp() || !isIosSafari()) return;
+    setTimeout(() => {
+      if (!mobile.pwaHintDismissed && !isStandaloneApp()) {
+        setPwaTipVisible(true, false);
+      }
+    }, 1200);
   }
 
   function setupMobileControls() {

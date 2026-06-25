@@ -3,10 +3,16 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Unity Web Player | virtual-gallery-unity-v67-mobile-ux-performance-restore</title>
+    <title>Unity Web Player | virtual-gallery-unity-v69-ios-pwa-immersive-mobile</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
-  </head>
+    <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#171511">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="AX Gallery">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
   <body>
     <div id="unity-container" class="unity-desktop">
       <canvas id="unity-canvas" width=960 height=600 tabindex="-1"></canvas>
@@ -20,7 +26,7 @@
       <div id="unity-footer">
         <div id="unity-logo-title-footer"></div>
         <div id="unity-fullscreen-button"></div>
-        <div id="unity-build-title">virtual-gallery-unity-v67-mobile-ux-performance-restore</div>
+        <div id="unity-build-title">virtual-gallery-unity-v69-ios-pwa-immersive-mobile</div>
       </div>
     </div>
     <script>
@@ -60,7 +66,7 @@
         codeUrl: buildUrl + "/AXVirtualGalleryWeb.wasm",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "DefaultCompany",
-        productName: "virtual-gallery-unity-v67-mobile-ux-performance-restore",
+        productName: "virtual-gallery-unity-v69-ios-pwa-immersive-mobile",
         productVersion: "1.0",
         showBanner: unityShowBanner,
         // errorHandler: function(err, url, line) {

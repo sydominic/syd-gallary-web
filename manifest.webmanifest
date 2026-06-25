@@ -1,0 +1,21 @@
+{
+  "name": "AX Gallery",
+  "short_name": "AX Gallery",
+  "description": "AX virtual gallery WebGL exhibition",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone", "minimal-ui", "browser"],
+  "orientation": "landscape",
+  "background_color": "#171511",
+  "theme_color": "#171511",
+  "categories": ["art", "education", "entertainment"],
+  "icons": [
+    {
+      "src": "ax_gallery_icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
